@@ -14,6 +14,8 @@ from collections import Counter
 
 import matplotlib.pyplot as plt
 import numpy as np
+from statistics import mean
+import json
 
 from BoundingBox import *
 from BoundingBoxes import *
@@ -24,7 +26,8 @@ class Evaluator:
     def GetPascalVOCMetrics(self,
                             boundingboxes,
                             IOUThreshold=0.5,
-                            method=MethodAveragePrecision.EveryPointInterpolation):
+                            method=MethodAveragePrecision.EveryPointInterpolation,
+                            save_results=True):
         """Get the metrics used by the VOC Pascal 2012 challenge.
         Get
         Args:
@@ -49,7 +52,7 @@ class Evaluator:
             dict['total TP']: total number of True Positive detections;
             dict['total FP']: total number of False Negative detections;
         """
-        ret = []  # list containing metrics (precision, recall, average precision) of each class
+        results = []  # list containing metrics (precision, recall, average precision) of each class
         # List with all ground truths (Ex: [imageName,class,confidence=1, (bb coordinates XYX2Y2)])
         groundTruths = []
         # List with all detections (Ex: [imageName,class,confidence,(bb coordinates XYX2Y2)])
@@ -120,39 +123,94 @@ class Evaluator:
                 else:
                     FP[d] = 1  # count as false positive
                     # print("FP")
-            # compute precision, recall and average precision
+
+            # cumulated TP, FP, precision and recall
             acc_FP = np.cumsum(FP)
             acc_TP = np.cumsum(TP)
-            rec = acc_TP / npos
-            prec = np.divide(acc_TP, (acc_FP + acc_TP))
+            rec = acc_TP / float(npos) # recall = TP / all groundtruths
+            prec = np.divide(acc_TP, (acc_FP + acc_TP)) # Precision = TP / all detections
+
             # Depending on the method, call the right implementation
             if method == MethodAveragePrecision.EveryPointInterpolation:
                 [ap, mpre, mrec, ii] = Evaluator.CalculateAveragePrecision(rec, prec)
             else:
                 [ap, mpre, mrec, _] = Evaluator.ElevenPointInterpolatedAP(rec, prec)
+
+            # compute TP, FP, FN, precision, recall
+            truePositive = np.sum(TP)
+            falsePositive = np.sum(FP)
+            falseNegative = npos - truePositive
+            precision = truePositive / (truePositive + falsePositive)
+            recall = truePositive / float(npos)
             # add class result in the dictionary to be returned
             r = {
                 'class': c,
-                'precision': prec,
-                'recall': rec,
-                'AP': ap,
+                'TP': truePositive,
+                'FP': falsePositive,
+                'FN': falseNegative,
+                'amount groundtruths': npos,
+                'precision': precision,
+                'recall': recall,
+                'average precision': ap,
                 'interpolated precision': mpre,
                 'interpolated recall': mrec,
-                'total positives': npos,
-                'total TP': np.sum(TP),
-                'total FP': np.sum(FP)
+                'acc precision': prec,
+                'acc recall': rec
             }
-            ret.append(r)
-        return ret
+            results.append(r)
 
-    def PlotPrecisionRecallCurve(self,
-                                 boundingBoxes,
-                                 IOUThreshold=0.5,
+        # make plot for results
+        Evaluator.PlotPrecisionRecallCurve(results, IOUThreshold, method)
+
+        # write results to file
+        if save_results:
+            with open ('./evaluation_results/metrics_single_classes.json', 'w', encoding='utf-8') as f:
+                for result in results:
+                    if (result['amount groundtruths'] > 0 and result['class'] == '0'):
+                        result.pop('interpolated precision', None)
+                        result.pop('interpolated recall', None)
+                        result.pop('acc precision', None)
+                        result.pop('acc recall', None)
+                        #result.pop('average precision', None)
+                        json.dump(result, f, ensure_ascii=False, indent=4)
+
+        return results
+    
+    def getCOCOMetrics(self, boundingboxes, IOUThreshold=[.5, .05, .95], method=MethodAveragePrecision.EveryPointInterpolation):
+        start = IOUThreshold[0]
+        step = IOUThreshold[1]
+        stop = IOUThreshold[2]
+        results = []
+
+        iou = start
+        while iou <= stop:
+            results.append(self.GetPascalVOCMetrics(boundingboxes, iou, save_results=False))
+            iou = round(iou + step, 2)
+
+        acc_AP = [0] * len(results[0]) 
+        iou_steps = len(results)
+
+        for result in results:
+            for index, m in enumerate(result):
+                if m['amount groundtruths'] > 0:
+                    acc_AP[index] = acc_AP[index] + m['average precision']
+        
+        acc_AP = np.trim_zeros(acc_AP)
+        average_AP = [ap/iou_steps for ap in acc_AP] # get average over different IOU steps
+        average_average_AP = mean(average_AP) # get average over classes
+
+        return average_average_AP
+       
+
+    @staticmethod
+    def PlotPrecisionRecallCurve(results,
+                                IOUTreshold,
                                  method=MethodAveragePrecision.EveryPointInterpolation,
-                                 showAP=False,
-                                 showInterpolatedPrecision=False,
-                                 savePath=None,
-                                 showGraphic=True):
+                                 showAP=True,
+                                 showInterpolatedPrecision=True,
+                                 saveGraphic=True,
+                                 showGraphic=False
+                                 ):
         """PlotPrecisionRecallCurve
         Plot the Precision x Recall curve for a given class.
         Args:
@@ -184,22 +242,21 @@ class Evaluator:
             dict['total TP']: total number of True Positive detections;
             dict['total FP']: total number of False Negative detections;
         """
-        results = self.GetPascalVOCMetrics(boundingBoxes, IOUThreshold, method)
         result = None
         # Each resut represents a class
         for result in results:
-            if result is None:
-                raise IOError('Error: Class %d could not be found.' % classId)
+            if result['amount groundtruths'] == 0:
+                continue
 
             classId = result['class']
-            precision = result['precision']
-            recall = result['recall']
-            average_precision = result['AP']
+            precision = result['acc precision']
+            recall = result['acc recall']
+            average_precision = result['average precision']
             mpre = result['interpolated precision']
             mrec = result['interpolated recall']
-            npos = result['total positives']
-            total_tp = result['total TP']
-            total_fp = result['total FP']
+            npos = result['amount groundtruths']
+            total_tp = result['TP']
+            total_fp = result['FP']
 
             plt.close()
             if showInterpolatedPrecision:
@@ -224,7 +281,7 @@ class Evaluator:
             if showAP:
                 ap_str = "{0:.2f}%".format(average_precision * 100)
                 # ap_str = "{0:.4f}%".format(average_precision * 100)
-                plt.title('Precision x Recall curve \nClass: %s, AP: %s' % (str(classId), ap_str))
+                plt.title('Precision x Recall curve \nClass: %s, IOU Treshold: %s, AP: %s' % (str(classId), str(IOUTreshold), ap_str))
             else:
                 plt.title('Precision x Recall curve \nClass: %s' % str(classId))
             plt.legend(shadow=True)
@@ -280,13 +337,12 @@ class Evaluator:
             #                 xytext=vecPositions[idx], textcoords='offset points',
             #                 arrowprops=dict(arrowstyle="->", connectionstyle="arc3"),
             #                 bbox=box)
-            if savePath is not None:
-                plt.savefig(os.path.join(savePath, classId + '.png'))
+            if saveGraphic is True:
+                plt.savefig(os.path.join("./evaluation_results/", classId + "_IOUTresh-" + str(IOUTreshold) + '_PrecisionxRecallCurve.png'))
             if showGraphic is True:
                 plt.show()
                 # plt.waitforbuttonpress()
                 plt.pause(0.05)
-        return results
 
     @staticmethod
     def CalculateAveragePrecision(rec, prec):

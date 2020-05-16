@@ -68,6 +68,12 @@ class BoundingBoxes:
             else:  # if detection
                 image = add_bb_into_image(image, bb, color=(255, 0, 0))  # red
         return image
+    
+    def getAllImageNames(self):
+        imageNames = set()
+        for b in self._boundingBoxes:
+            imageNames.add(b.getImageName())
+        return imageNames
 
     # def drawAllBoundingBoxes(self, image):
     #     for gt in self.getBoundingBoxesByType(BBType.GroundTruth):

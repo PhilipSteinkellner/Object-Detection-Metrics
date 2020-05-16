@@ -90,36 +90,28 @@ def convertToAbsoluteValues(size, box):
     return (xIn, yIn, xEnd, yEnd)
 
 
-def add_bb_into_image(image, bb, color=(255, 0, 0), thickness=2, label=None):
+def add_bb_into_image(frame, bb, color=(255, 0, 0)):
     r = int(color[0])
     g = int(color[1])
     b = int(color[2])
-
-    font = cv2.FONT_HERSHEY_SIMPLEX
-    fontScale = 0.5
-    fontThickness = 1
-
     x1, y1, x2, y2 = bb.getAbsoluteBoundingBox(BBFormat.XYX2Y2)
     x1 = int(x1)
     y1 = int(y1)
     x2 = int(x2)
     y2 = int(y2)
-    cv2.rectangle(image, (x1, y1), (x2, y2), (b, g, r), thickness)
-    # Add label
-    if label is not None:
-        # Get size of the text box
-        (tw, th) = cv2.getTextSize(label, font, fontScale, fontThickness)[0]
-        # Top-left coord of the textbox
-        (xin_bb, yin_bb) = (x1 + thickness, y1 - th + int(12.5 * fontScale))
-        # Checking position of the text top-left (outside or inside the bb)
-        if yin_bb - th <= 0:  # if outside the image
-            yin_bb = y1 + th  # put it inside the bb
-        r_Xin = x1 - int(thickness / 2)
-        r_Yin = y1 - th - int(thickness / 2)
-        # Draw filled rectangle to put the text in it
-        cv2.rectangle(image, (r_Xin, r_Yin - thickness),
-                      (r_Xin + tw + thickness * 3, r_Yin + th + int(12.5 * fontScale)), (b, g, r),
-                      -1)
-        cv2.putText(image, label, (xin_bb, yin_bb), font, fontScale, (0, 0, 0), fontThickness,
-                    cv2.LINE_AA)
-    return image
+    # Draw a bounding box.
+    cv2.rectangle(frame, (x1, y1), (x2, y2), (b, g, r), 1)
+
+    # Get the label for the class name and its confidence
+    conf = bb.getConfidence()
+    # draw label
+    if not conf is None:
+        conf = '%.4f' % bb.getConfidence()
+        label = '%s:%s' % (bb.getClassId(), conf)
+        #Display the label at the top of the bounding box
+        labelSize, baseLine = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, 0.5, 1) # getTextSize(text, fontFace, fontScale, thickness);
+        y1 = max(y1, labelSize[1])
+        #cv2.rectangle(frame, (x1, y1 - round(labelSize[1])), (x1 + round(labelSize[0]), y1 + baseLine), (b, g, r), cv2.FILLED)
+        cv2.putText(frame, label, (x1, y1-5), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0,0,0), 1)
+
+    return frame
