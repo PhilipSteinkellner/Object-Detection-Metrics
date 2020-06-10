@@ -27,7 +27,8 @@ class Evaluator:
                             boundingboxes,
                             IOUThreshold=0.5,
                             method=MethodAveragePrecision.EveryPointInterpolation,
-                            save_results=True):
+                            save_results=True,
+                            save_path = "PascalVOC"):
         """Get the metrics used by the VOC Pascal 2012 challenge.
         Get
         Args:
@@ -160,13 +161,13 @@ class Evaluator:
             results.append(r)
 
         # make plot for results
-        Evaluator.PlotPrecisionRecallCurve(results, IOUThreshold, method)
+        Evaluator.PlotPrecisionRecallCurve(results, IOUThreshold, save_path, method)
 
         # write results to file
         if save_results:
-            with open ('./evaluation_results/metrics_single_classes.json', 'w', encoding='utf-8') as f:
+            with open ('./evaluation_results/'+save_path+'/metrics_single_classes.json', 'w', encoding='utf-8') as f:
                 for result in results:
-                    if (result['amount groundtruths'] > 0 and result['class'] == '0'):
+                    if (result['amount groundtruths'] > 0 and result['class'] == 'person'):
                         result.pop('interpolated precision', None)
                         result.pop('interpolated recall', None)
                         result.pop('acc precision', None)
@@ -184,7 +185,7 @@ class Evaluator:
 
         iou = start
         while iou <= stop:
-            results.append(self.GetPascalVOCMetrics(boundingboxes, iou, save_results=False))
+            results.append(self.GetPascalVOCMetrics(boundingboxes, iou, save_results=False, save_path="COCO"))
             iou = round(iou + step, 2)
 
         acc_AP = [0] * len(results[0]) 
@@ -192,7 +193,7 @@ class Evaluator:
 
         for result in results:
             for index, m in enumerate(result):
-                if m['amount groundtruths'] > 0:
+                if m['amount groundtruths'] > 0 and m["class"] == "person":
                     acc_AP[index] = acc_AP[index] + m['average precision']
         
         acc_AP = np.trim_zeros(acc_AP)
@@ -205,6 +206,7 @@ class Evaluator:
     @staticmethod
     def PlotPrecisionRecallCurve(results,
                                 IOUTreshold,
+                                save_path,
                                  method=MethodAveragePrecision.EveryPointInterpolation,
                                  showAP=True,
                                  showInterpolatedPrecision=True,
@@ -338,7 +340,7 @@ class Evaluator:
             #                 arrowprops=dict(arrowstyle="->", connectionstyle="arc3"),
             #                 bbox=box)
             if saveGraphic is True:
-                plt.savefig(os.path.join("./evaluation_results/", classId + "_IOUTresh-" + str(IOUTreshold) + '_PrecisionxRecallCurve.png'))
+                plt.savefig(os.path.join('./evaluation_results/'+save_path+'/', classId + "_IOUTresh-" + str(IOUTreshold) + '_PrecisionxRecallCurve.png'))
             if showGraphic is True:
                 plt.show()
                 # plt.waitforbuttonpress()
