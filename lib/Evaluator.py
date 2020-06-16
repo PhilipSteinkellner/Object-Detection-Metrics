@@ -25,6 +25,7 @@ from utils import *
 class Evaluator:
     def GetPascalVOCMetrics(self,
                             boundingboxes,
+                            yolo_version,
                             IOUThreshold=0.5,
                             method=MethodAveragePrecision.EveryPointInterpolation,
                             save_results=True,
@@ -161,23 +162,22 @@ class Evaluator:
             results.append(r)
 
         # make plot for results
-        Evaluator.PlotPrecisionRecallCurve(results, IOUThreshold, save_path, method)
+        Evaluator.PlotPrecisionRecallCurve(results, IOUThreshold, save_path, yolo_version, method)
 
         # write results to file
         if save_results:
-            with open ('./evaluation_results/'+save_path+'/metrics_single_classes.json', 'w', encoding='utf-8') as f:
+            with open ('./evaluation_results/'+yolo_version+'/'+save_path+'/metrics_single_classes.json', 'w', encoding='utf-8') as f:
                 for result in results:
-                    if (result['amount groundtruths'] > 0 and result['class'] == 'person'):
+                    if (result['amount groundtruths'] > 0):
                         result.pop('interpolated precision', None)
                         result.pop('interpolated recall', None)
                         result.pop('acc precision', None)
                         result.pop('acc recall', None)
                         #result.pop('average precision', None)
                         json.dump(result, f, ensure_ascii=False, indent=4)
-
         return results
     
-    def getCOCOMetrics(self, boundingboxes, IOUThreshold=[.5, .05, .95], method=MethodAveragePrecision.EveryPointInterpolation):
+    def getCOCOMetrics(self, boundingboxes, yolo_version, IOUThreshold=[.5, .05, .95], method=MethodAveragePrecision.EveryPointInterpolation):
         start = IOUThreshold[0]
         step = IOUThreshold[1]
         stop = IOUThreshold[2]
@@ -185,7 +185,7 @@ class Evaluator:
 
         iou = start
         while iou <= stop:
-            results.append(self.GetPascalVOCMetrics(boundingboxes, iou, save_results=False, save_path="COCO"))
+            results.append(self.GetPascalVOCMetrics(boundingboxes, yolo_version, iou, save_results=False, save_path="COCO"))
             iou = round(iou + step, 2)
 
         acc_AP = [0] * len(results[0]) 
@@ -193,7 +193,7 @@ class Evaluator:
 
         for result in results:
             for index, m in enumerate(result):
-                if m['amount groundtruths'] > 0 and m["class"] == "person":
+                if m['amount groundtruths'] > 0:
                     acc_AP[index] = acc_AP[index] + m['average precision']
         
         acc_AP = np.trim_zeros(acc_AP)
@@ -207,11 +207,12 @@ class Evaluator:
     def PlotPrecisionRecallCurve(results,
                                 IOUTreshold,
                                 save_path,
+                                yolo_version,
                                  method=MethodAveragePrecision.EveryPointInterpolation,
                                  showAP=True,
                                  showInterpolatedPrecision=True,
                                  saveGraphic=True,
-                                 showGraphic=False
+                                 showGraphic=False,
                                  ):
         """PlotPrecisionRecallCurve
         Plot the Precision x Recall curve for a given class.
@@ -263,7 +264,7 @@ class Evaluator:
             plt.close()
             if showInterpolatedPrecision:
                 if method == MethodAveragePrecision.EveryPointInterpolation:
-                    plt.plot(mrec, mpre, '--r', label='Interpolated precision (every point)')
+                    plt.plot(mrec, mpre, color='b', label='Interpolated precision (every point)', linewidth=2.0)
                 elif method == MethodAveragePrecision.ElevenPointInterpolation:
                     # Uncomment the line below if you want to plot the area
                     # plt.plot(mrec, mpre, 'or', label='11-point interpolated precision')
@@ -277,7 +278,7 @@ class Evaluator:
                             nrec.append(r)
                             nprec.append(max([mpre[int(id)] for id in idxEq]))
                     plt.plot(nrec, nprec, 'or', label='11-point interpolated precision')
-            plt.plot(recall, precision, label='Precision')
+            plt.plot(recall, precision, color="y", label='Precision')
             plt.xlabel('recall')
             plt.ylabel('precision')
             if showAP:
@@ -340,7 +341,7 @@ class Evaluator:
             #                 arrowprops=dict(arrowstyle="->", connectionstyle="arc3"),
             #                 bbox=box)
             if saveGraphic is True:
-                plt.savefig(os.path.join('./evaluation_results/'+save_path+'/', classId + "_IOUTresh-" + str(IOUTreshold) + '_PrecisionxRecallCurve.png'))
+                plt.savefig(os.path.join('./evaluation_results/'+yolo_version+'/'+save_path+'/', classId + "_IOUTresh-" + str(IOUTreshold) + '_PrecisionxRecallCurve.png'))
             if showGraphic is True:
                 plt.show()
                 # plt.waitforbuttonpress()
